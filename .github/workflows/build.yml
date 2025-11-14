@@ -1,0 +1,30 @@
+name: C++ CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up w64devkit
+      run: |
+        Invoke-WebRequest -Uri https://github.com/skeeto/w64devkit/releases/download/v2.4.0/w64devkit-x64-2.4.0.7z.exe -OutFile w64devkit.exe
+        Start-Process -FilePath .\w64devkit.exe -ArgumentList "-y", "-o.\w64devkit" -Wait -NoNewWindow
+        echo "$((Get-Item .).FullName)\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      shell: pwsh
+
+    - name: Build
+      run: g++ main.cpp -o PasteAsKeystrokes.exe -lcomctl32 -lgdi32 -luser32 -lkernel32
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: PasteAsKeystrokes.exe
+        path: PasteAsKeystrokes.exe
