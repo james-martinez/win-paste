@@ -32,7 +32,7 @@ This project is built using C++ and the Windows API. The recommended way to buil
 
 4.  **Compile the Application**: Use `g++` to compile the source code. The following command links against the necessary Windows libraries:
     ```sh
-    g++ main.cpp -o PasteAsKeystrokes.exe -lcomctl32 -lgdi32 -luser32 -lkernel32
+    g++ main.cpp -o PasteAsKeystrokes.exe -mwindows -static -static-libgcc -static-libstdc++ -lcomctl32 -lgdi32 -luser32 -lkernel32
     ```
 
 5.  **Run**: You will now have `PasteAsKeystrokes.exe` in the directory.
