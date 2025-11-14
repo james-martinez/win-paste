@@ -1,0 +1,104 @@
+name: Screenshot
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  screenshot:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up w64devkit
+      run: |
+        Invoke-WebRequest -Uri https://github.com/skeeto/w64devkit/releases/download/v2.4.0/w64devkit-x64-2.4.0.7z.exe -OutFile w64devkit.exe
+        Start-Process -FilePath .\w64devkit.exe -ArgumentList "-y", "-o.\w64devkit" -Wait -NoNewWindow
+        echo "$((Get-Item .).FullName)\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      shell: pwsh
+
+    - name: Build
+      run: g++ main.cpp -o PasteAsKeystrokes.exe -mwindows -static -static-libgcc -static-libstdc++ -lcomctl32 -lgdi32 -luser32 -lkernel32
+
+    - name: Run and Screenshot
+      run: |
+        # Start Notepad
+        Start-Process notepad.exe
+        Start-Sleep -Seconds 2
+        $notepadProcess = Get-Process notepad | Select-Object -First 1
+        $mainWindowHandle = $notepadProcess.MainWindowHandle
+
+        # Use Add-Type to access Win32 functions
+        Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win32SetForegroundWindow -Namespace Win32Functions
+
+        # Bring Notepad to the foreground
+        [Win32Functions.Win32SetForegroundWindow]::SetForegroundWindow($mainWindowHandle)
+        Start-Sleep -Seconds 1
+
+        # Add System.Windows.Forms assembly for SendKeys
+        Add-Type -AssemblyName System.Windows.Forms
+
+        # Send keys to Notepad
+        [System.Windows.Forms.SendKeys]::SendWait("this is a test.")
+        Start-Sleep -Seconds 1
+
+        # Select all text (Ctrl+A) and copy (Ctrl+C)
+        [System.Windows.Forms.SendKeys]::SendWait("^a")
+        Start-Sleep -Seconds 1
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        Start-Sleep -Seconds 1
+
+        # Run the application
+        Start-Process -FilePath .\PasteAsKeystrokes.exe
+        Start-Sleep -Seconds 2 # Wait for app to open
+
+        # Take a screenshot of the app with the preview
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen(0, 0, 0, 0, $bounds.Size)
+        $bitmap.Save("screenshot_preview.png", [System.Drawing.Imaging.ImageFormat]::Png)
+
+        # Get the application process and window handle
+        $appProcess = Get-Process PasteAsKeystrokes | Select-Object -First 1
+        $appWindowHandle = $appProcess.MainWindowHandle
+
+        # Bring the app to the foreground
+        [Win32Functions.Win32SetForegroundWindow]::SetForegroundWindow($appWindowHandle)
+        Start-Sleep -Seconds 1
+
+        # Add more Win32 functions to click the button
+        Add-Type -MemberDefinition @'
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
+        [DllImport("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, int wMsg, IntPtr wParam, IntPtr lParam);
+        public const int BM_CLICK = 0x00F5;
+        '@ -Name Win32Button -Namespace Win32Functions
+
+        # Click the paste button
+        $pasteButtonHandle = [Win32Functions.Win32Button]::GetDlgItem($appWindowHandle, 101)
+        [Win32Functions.Win32Button]::SendMessage($pasteButtonHandle, [Win32Functions.Win32Button]::BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
+
+        # Bring Notepad to the foreground so the app can type into it
+        [Win32Functions.Win32SetForegroundWindow]::SetForegroundWindow($mainWindowHandle)
+        Start-Sleep -Seconds 4 # Wait for the 3s delay and typing
+
+        # Take a screenshot of Notepad to verify the paste
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen(0, 0, 0, 0, $bounds.Size)
+        $bitmap.Save("screenshot_paste.png", [System.Drawing.Imaging.ImageFormat]::Png)
+      shell: pwsh
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v5
+      with:
+        name: screenshots
+        path: |
+          screenshot_preview.png
+          screenshot_paste.png
