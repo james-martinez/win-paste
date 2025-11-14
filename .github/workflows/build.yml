@@ -21,7 +21,7 @@ jobs:
       shell: pwsh
 
     - name: Build
-      run: g++ main.cpp -o PasteAsKeystrokes.exe -lcomctl32 -lgdi32 -luser32 -lkernel32
+      run: g++ main.cpp -o PasteAsKeystrokes.exe -static-libgcc -static-libstdc++ -lcomctl32 -lgdi32 -luser32 -lkernel32
 
     - name: Upload artifact
       uses: actions/upload-artifact@v5
