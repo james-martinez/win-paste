@@ -1,0 +1,99 @@
+name: Screenshot
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  screenshot:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up w64devkit
+      run: |
+        Invoke-WebRequest -Uri https://github.com/skeeto/w64devkit/releases/download/v2.4.0/w64devkit-x64-2.4.0.7z.exe -OutFile w64devkit.exe
+        Start-Process -FilePath .\w64devkit.exe -ArgumentList "-y", "-o.\w64devkit" -Wait -NoNewWindow
+        echo "$((Get-Item .).FullName)\w64devkit\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      shell: pwsh
+
+    - name: Build
+      run: g++ main.cpp -o PasteAsKeystrokes.exe -mwindows -static -static-libgcc -static-libstdc++ -lcomctl32 -lgdi32 -luser32 -lkernel32
+
+    - name: Run and Screenshot
+      run: |
+        # Use Add-Type to access Win32 functions for window manipulation
+        Add-Type -MemberDefinition @'
+        [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+        '@ -Name Win32Functions -Namespace Win32Functions
+
+        # Add System.Windows.Forms assembly for SendKeys and Screen dimensions
+        Add-Type -AssemblyName System.Windows.Forms
+        $screenWidth = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width
+        $screenHeight = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+
+        # Start Notepad and move it to the left
+        $notepadProcess = Start-Process notepad.exe -PassThru
+        Start-Sleep -Seconds 2
+        $notepadProcess.Refresh() # Ensure MainWindowHandle is available
+        $notepadWindowHandle = $notepadProcess.MainWindowHandle
+        [Win32Functions.Win32Functions]::MoveWindow($notepadWindowHandle, 0, 0, $screenWidth / 2, $screenHeight / 2, $true)
+        Start-Sleep -Seconds 1
+
+        # Bring Notepad to the foreground and type/copy text
+        [Win32Functions.Win32Functions]::SetForegroundWindow($notepadWindowHandle)
+        Start-Sleep -Seconds 1
+        [System.Windows.Forms.SendKeys]::SendWait("this is a test.")
+        Start-Sleep -Seconds 1
+        [System.Windows.Forms.SendKeys]::SendWait("^a")
+        Start-Sleep -Seconds 1
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        Start-Sleep -Seconds 1
+
+        # Add a newline and move cursor down for the paste
+        [System.Windows.Forms.SendKeys]::SendWait("{END}") # Move to the end of the line
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+        Start-Sleep -Seconds 1
+
+        # Run the application and move it to the right
+        $appProcess = Start-Process -FilePath .\PasteAsKeystrokes.exe -PassThru
+        Start-Sleep -Seconds 2 # Wait for app to open
+        $appProcess.Refresh()
+        $appWindowHandle = $appProcess.MainWindowHandle
+        [Win32Functions.Win32Functions]::MoveWindow($appWindowHandle, $screenWidth / 2, 0, 260, 280, $true)
+        Start-Sleep -Seconds 1
+
+        # Take a screenshot of the app with the preview
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen(0, 0, 0, 0, $bounds.Size)
+        $bitmap.Save("screenshot_preview.png", [System.Drawing.Imaging.ImageFormat]::Png)
+
+        # Bring the app to the foreground to press the button
+        [Win32Functions.Win32Functions]::SetForegroundWindow($appWindowHandle)
+        Start-Sleep -Seconds 1
+
+        # Press the Paste button using SendKeys (Enter, since it's the default)
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+
+        # Immediately bring Notepad back to the foreground so the app can type into it
+        [Win32Functions.Win32Functions]::SetForegroundWindow($notepadWindowHandle)
+        Start-Sleep -Seconds 5 # Wait for the app's 3s start delay and the typing to complete
+
+        # Take a final screenshot to verify the paste
+        $graphics.CopyFromScreen(0, 0, 0, 0, $bounds.Size)
+        $bitmap.Save("screenshot_paste.png", [System.Drawing.Imaging.ImageFormat]::Png)
+      shell: pwsh
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v5
+      with:
+        name: screenshots
+        path: |
+          screenshot_preview.png
+          screenshot_paste.png
