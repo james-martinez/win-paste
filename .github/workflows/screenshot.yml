@@ -29,9 +29,6 @@ jobs:
         Add-Type -MemberDefinition @'
         [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
-        [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
-        [DllImport("user32.dll")] public static extern int SendMessage(IntPtr hWnd, int wMsg, IntPtr wParam, IntPtr lParam);
-        public const int BM_CLICK = 0x00F5;
         '@ -Name Win32Functions -Namespace Win32Functions
 
         # Add System.Windows.Forms assembly for SendKeys and Screen dimensions
@@ -77,15 +74,16 @@ jobs:
         $graphics.CopyFromScreen(0, 0, 0, 0, $bounds.Size)
         $bitmap.Save("screenshot_preview.png", [System.Drawing.Imaging.ImageFormat]::Png)
 
-        # Bring the app to the foreground and click the paste button
+        # Bring the app to the foreground to press the button
         [Win32Functions.Win32Functions]::SetForegroundWindow($appWindowHandle)
         Start-Sleep -Seconds 1
-        $pasteButtonHandle = [Win32Functions.Win32Functions]::GetDlgItem($appWindowHandle, 101)
-        [Win32Functions.Win32Functions]::SendMessage($pasteButtonHandle, [Win32Functions.Win32Functions]::BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
 
-        # Bring Notepad back to the foreground so the app can type into it
+        # Press the Paste button using SendKeys (Enter, since it's the default)
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+
+        # Immediately bring Notepad back to the foreground so the app can type into it
         [Win32Functions.Win32Functions]::SetForegroundWindow($notepadWindowHandle)
-        Start-Sleep -Seconds 4 # Wait for the app's 3s start delay and typing
+        Start-Sleep -Seconds 5 # Wait for the app's 3s start delay and the typing to complete
 
         # Take a final screenshot to verify the paste
         $graphics.CopyFromScreen(0, 0, 0, 0, $bounds.Size)
