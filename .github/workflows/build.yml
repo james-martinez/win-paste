@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up w64devkit
       run: |
@@ -24,7 +24,7 @@ jobs:
       run: g++ main.cpp -o PasteAsKeystrokes.exe -lcomctl32 -lgdi32 -luser32 -lkernel32
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v5
       with:
         name: PasteAsKeystrokes.exe
         path: PasteAsKeystrokes.exe
